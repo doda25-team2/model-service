@@ -2,23 +2,26 @@
 Preprocess the data to be trained by the learning algorithm.
 """
 
+# stdlib
+import string
+# external
 import pandas as pd
 import numpy as np
-
-import string
 import nltk
 from nltk.corpus import stopwords
 from nltk.stem import SnowballStemmer
-nltk.download('stopwords')
-
 from sklearn.feature_extraction.text import CountVectorizer, TfidfTransformer
 from sklearn.preprocessing import FunctionTransformer
 from sklearn.pipeline import make_union, make_pipeline
 from joblib import dump, load
+# internal
+from config import TRAINING_DATA_PATH, OUTPUT_PATH
+
+nltk.download('stopwords')
 
 def _load_data():
     messages = pd.read_csv(
-        'smsspamcollection/SMSSpamCollection',
+        TRAINING_DATA_PATH / 'SMSSpamCollection',
         sep='\t',
         names=['label', 'message']
     )
@@ -67,12 +70,12 @@ def _preprocess(messages):
     )
 
     preprocessed_data = preprocessor.fit_transform(messages['message'])
-    dump(preprocessor, 'output/preprocessor.joblib')
-    dump(preprocessed_data, 'output/preprocessed_data.joblib')
+    dump(preprocessor, OUTPUT_PATH / 'preprocessor.joblib')
+    dump(preprocessed_data, OUTPUT_PATH / 'preprocessed_data.joblib')
     return preprocessed_data
 
 def prepare(message):
-    preprocessor = load('output/preprocessor.joblib')
+    preprocessor = load(OUTPUT_PATH / 'preprocessor.joblib')
     return preprocessor.transform([message])
 
 

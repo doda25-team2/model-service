@@ -9,6 +9,7 @@ from pathlib import Path
 # Path assignments:
 ROOT = Path(__file__).parent.parent
 TRAINING_DATA_PATH = ROOT / "smsspamcollection"
+OUTPUT_PATH = ROOT / "output"
 
 if __name__ == "__main__":
     print(f"{ROOT=}")
