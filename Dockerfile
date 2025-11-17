@@ -10,5 +10,6 @@ COPY --from=builder /build/.venv /backend/.venv
 COPY src/ /backend/src/
 COPY output/ /backend/output/
 ENV PATH="/backend/.venv/bin:$PATH"
+ENV MODEL_SERVICE_PORT=8081
 EXPOSE 8081
 CMD ["python", "/backend/src/serve_model.py"]
