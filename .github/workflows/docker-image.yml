@@ -42,10 +42,10 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
-            # Use the Git tag as the image version (e.g. "v1.0.0")
             type=ref,event=tag
-            # Also publish a "latest" tag
-            type=raw,value=latest
+            type=semver,pattern={{major}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
 
       - name: Build and push Docker image
         id: push
@@ -53,6 +53,7 @@ jobs:
         with:
           context: .
           push: true                      
+          platforms: linux/amd64, linux/arm64
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
