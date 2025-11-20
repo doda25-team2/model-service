@@ -6,9 +6,15 @@ RUN uv sync --frozen --no-install-project
 
 FROM python:3.12-slim
 WORKDIR /backend
+VOLUME ["/models"]
+
+ENV MODEL_PATH=/models/model.joblib
+ENV PREPROCESSOR_PATH=/models/preprocessor.joblib
+ENV DEFAULT_MODEL_URL="https://github.com/doda25-team2/model-service/releases/latest/download/model.joblib"
+ENV DEFAULT_PREPROCESSOR_URL="https://github.com/doda25-team2/model-service/releases/latest/download/preprocessor.joblib"
+
 COPY --from=builder /build/.venv /backend/.venv
 COPY src/ /backend/src/
-COPY output/ /backend/output/
 ENV PATH="/backend/.venv/bin:$PATH"
 ENV MODEL_SERVICE_PORT=8081
 EXPOSE 8081
