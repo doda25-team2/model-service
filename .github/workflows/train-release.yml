@@ -1,0 +1,77 @@
+name: Train & Release Model
+
+on:
+  workflow_dispatch:
+
+jobs:
+  train-release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Sync dependencies
+        run: uv sync
+
+      - name: Download dataset
+        run: uv run python src/get_data.py
+
+      - name: Preprocess data
+        run: uv run python src/text_preprocessing.py
+
+      - name: Train model
+        run: uv run python src/text_classification.py
+
+      - name: Generate next version
+        id: genver
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || true)
+
+          if [[ -z "$LATEST" || ! "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            LATEST="v0.0.0"
+          fi
+
+          VER=${LATEST#v}
+          IFS='.' read -r major minor patch <<< "$VER"
+
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+
+          if [[ "$COMMIT_MSG" == *"#major"* ]]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [[ "$COMMIT_MSG" == *"#minor"* ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
+          NEW_VERSION="Model-v$major.$minor.$patch"
+          echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if gh release view "$NEW_VERSION" > /dev/null 2>&1; then
+            echo "Release $NEW_VERSION already exists. Skipping."
+            exit 0
+          fi
+
+          gh release create "$NEW_VERSION" \
+            output/model.joblib \
+            output/preprocessor.joblib \
+            --title "$NEW_VERSION"
+
