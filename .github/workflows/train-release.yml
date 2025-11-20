@@ -39,19 +39,31 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Try to get last release tag
           LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || true)
 
-          # If empty or malformed, start at v0.0.0
           if [[ -z "$LATEST" || ! "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             LATEST="v0.0.0"
           fi
 
           VER=${LATEST#v}
           IFS='.' read -r major minor patch <<< "$VER"
-          patch=$((patch + 1))
+
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
+
+          if [[ "$COMMIT_MSG" == *"#major"* ]]; then
+            major=$((major + 1))
+            minor=0
+            patch=0
+          elif [[ "$COMMIT_MSG" == *"#minor"* ]]; then
+            minor=$((minor + 1))
+            patch=0
+          else
+            patch=$((patch + 1))
+          fi
+
           NEW_VERSION="v$major.$minor.$patch"
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+
 
       - name: Create GitHub Release
         env:
