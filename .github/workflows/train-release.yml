@@ -34,25 +34,34 @@ jobs:
       - name: Train model
         run: uv run python src/text_classification.py
       
-      - name: Bump version
-        id: bump_version
-        uses: mathieudutour/github-tag-action@v6.1
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          default_bump: patch
+      - name: Read version
+        id: version
+        run: echo "VERSION=$(cat VERSION)" >> $GITHUB_ENV
 
-      - name: Create clean tag
+      - name: Bump patch version
+        id: bump
+        run: |
+          IFS='.' read -r major minor patch <<< "${VERSION}"
+          patch=$((patch+1))
+          new_version="$major.$minor.$patch"
+          echo "$new_version" > VERSION
+          echo "NEW_VERSION=$new_version" >> $GITHUB_ENV
+
+      - name: Commit and push new version
         run: |
           git config user.email "github-actions@github.com"
           git config user.name "github-actions"
-          git tag v${{ steps.bump_version.outputs.new_version }}
-          git push origin v${{ steps.bump_version.outputs.new_version }}
+          git add VERSION
+          git commit -m "Bump version to ${{ env.NEW_VERSION }}"
+          git tag "v${{ env.NEW_VERSION }}"
+          git push origin HEAD
+          git push origin "v${{ env.NEW_VERSION }}"
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v${{ steps.bump_version.outputs.new_version }}
-          name: "v${{ steps.bump_version.outputs.new_version }}"
+          tag_name: v${{ env.NEW_VERSION }}
+          name: "v${{ env.NEW_VERSION }}"
           files: |
             output/model.joblib
             output/preprocessor.joblib
