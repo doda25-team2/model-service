@@ -38,6 +38,13 @@ jobs:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           default_bump: patch
 
+      - name: Create clean tag
+        run: |
+          git config user.email "github-actions@github.com"
+          git config user.name "github-actions"
+          git tag v${{ steps.bump_version.outputs.new_version }}
+          git push origin v${{ steps.bump_version.outputs.new_version }}
+
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
@@ -48,5 +55,3 @@ jobs:
             output/preprocessor.joblib
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-
