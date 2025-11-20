@@ -65,7 +65,6 @@ jobs:
           NEW_VERSION="v$major.$minor.$patch"
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
 
-
       - name: Create GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
