@@ -52,5 +52,9 @@ def predict():
     return jsonify(res)
 
 if __name__ == '__main__':
-    #clf = joblib.load(OUTPUT_PATH / 'model.joblib')
-    app.run(host="0.0.0.0", port=8081, debug=True)
+  # Read port from environment so container runtime can override it
+  import os
+  # default to 8081 if MODEL_SERVICE_PORT is not set
+  port = int(os.getenv("MODEL_SERVICE_PORT", "8081"))
+  #clf = joblib.load(OUTPUT_PATH / 'model.joblib')
+  app.run(host="0.0.0.0", port=port, debug=True)
