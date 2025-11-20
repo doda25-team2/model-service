@@ -27,14 +27,22 @@ jobs:
 
       - name: Train model
         run: uv run python src/text_classification.py
+      
+      - name: Bump version
+        id: bump_version
+        uses: mathieudutour/github-tag-action@v6.1
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          default_bump: patch
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: model-${{ github.run_number }}
-          name: "Model Release ${{ github.run_number }}"
+          tag_name: ${{ steps.bump_version.outputs.new_tag }}
+          name: "Model Release ${{ steps.bump_version.outputs.new_tag }}"
           files: |
             output/model.joblib
             output/preprocessor.joblib
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
