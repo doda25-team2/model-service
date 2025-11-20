@@ -5,6 +5,7 @@ on:
   push:
     branches:
       - 9-f9-automated-training
+      - main
 
 jobs:
   train-release:
