@@ -1,6 +1,6 @@
 FROM python:3.12-slim AS builder
 WORKDIR /build
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.9.25 /uv /uvx /bin/
 COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-install-project
 
