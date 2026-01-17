@@ -1,7 +1,27 @@
+# This workflow trains the ML model and releases it as a GitHub release.
+# It uses semantic versioning with compatibility-based interpretation:
+#   - MAJOR: Format/serialization changes (breaks loading)
+#   - MINOR: Input/output schema changes (breaks inference)  
+#   - PATCH: Retraining with same pipeline (performance only)
+
 name: Train & Release Model
 
 on:
   workflow_dispatch:
+    inputs:
+      bump_type:
+        description: 'Version bump type'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+        default: patch
+      release_notes:
+        description: 'Release notes (optional)'
+        required: false
+        type: string
 
 jobs:
   train-release:
@@ -36,22 +56,27 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          LATEST=$(gh release list --limit 1 --json tagName -q '.[0].tagName' || true)
+          # Find the latest Model-v* release
+          LATEST=$(gh release list --limit 100 --json tagName -q '[.[].tagName | select(startswith("Model-v"))] | sort | reverse | .[0]' || true)
 
-          if [[ -z "$LATEST" || ! "$LATEST" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            LATEST="v0.0.0"
+          if [[ -z "$LATEST" || ! "$LATEST" =~ ^Model-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            LATEST="Model-v0.0.0"
           fi
 
-          VER=${LATEST#v}
+          echo "Latest model release: $LATEST"
+
+          # Strip 'Model-v' prefix
+          VER=${LATEST#Model-v}
           IFS='.' read -r major minor patch <<< "$VER"
 
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-
-          if [[ "$COMMIT_MSG" == *"#major"* ]]; then
+          # Bump based on manual input
+          BUMP_TYPE="${{ inputs.bump_type }}"
+          
+          if [[ "$BUMP_TYPE" == "major" ]]; then
             major=$((major + 1))
             minor=0
             patch=0
-          elif [[ "$COMMIT_MSG" == *"#minor"* ]]; then
+          elif [[ "$BUMP_TYPE" == "minor" ]]; then
             minor=$((minor + 1))
             patch=0
           else
@@ -60,6 +85,77 @@ jobs:
 
           NEW_VERSION="Model-v$major.$minor.$patch"
           echo "NEW_VERSION=$NEW_VERSION" >> $GITHUB_ENV
+          echo "VERSION_NUMBER=$major.$minor.$patch" >> $GITHUB_ENV
+          echo "New version: $NEW_VERSION"
+
+      - name: Generate model metadata
+        run: |
+          # Get accuracy from the training output
+          ACCURACY=$(uv run python -c "
+          import joblib
+          from sklearn.model_selection import train_test_split
+          from sklearn.metrics import accuracy_score
+          import pandas as pd
+
+          # Load data and model
+          messages = pd.read_csv('smsspamcollection/SMSSpamCollection', sep='\t', names=['label', 'message'])
+          preprocessed = joblib.load('output/preprocessed_data.joblib')
+          model = joblib.load('output/model.joblib')
+
+          # Split same as training
+          X_train, X_test, y_train, y_test = train_test_split(
+              preprocessed, messages['label'], test_size=0.3, random_state=101
+          )
+
+          # Calculate accuracy
+          predictions = model.predict(X_test)
+          accuracy = accuracy_score(y_test, predictions)
+          print(f'{accuracy:.4f}')
+          ")
+
+          # Get dataset info
+          DATASET_SAMPLES=$(wc -l < smsspamcollection/SMSSpamCollection | tr -d ' ')
+
+          # Get package versions
+          PYTHON_VERSION=$(python --version | cut -d' ' -f2)
+          SKLEARN_VERSION=$(uv run python -c "import sklearn; print(sklearn.__version__)")
+          NLTK_VERSION=$(uv run python -c "import nltk; print(nltk.__version__)")
+          JOBLIB_VERSION=$(uv run python -c "import joblib; print(joblib.__version__)")
+
+          # Create metadata JSON
+          cat > output/model_metadata.json << EOF
+          {
+            "model_version": "$NEW_VERSION",
+            "version_number": "$VERSION_NUMBER",
+            "trained_at": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "training_commit": "${{ github.sha }}",
+            "training_code_url": "https://github.com/${{ github.repository }}/tree/${{ github.sha }}",
+            "triggered_by": "${{ github.actor }}",
+            "environment": {
+              "python": "$PYTHON_VERSION",
+              "scikit_learn": "$SKLEARN_VERSION",
+              "nltk": "$NLTK_VERSION",
+              "joblib": "$JOBLIB_VERSION"
+            },
+            "performance": {
+              "accuracy": $ACCURACY,
+              "classifier": "DecisionTreeClassifier"
+            },
+            "dataset": {
+              "name": "SMSSpamCollection",
+              "samples": $DATASET_SAMPLES
+            },
+            "compatibility": {
+              "min_service_version": "v1.0.0",
+              "format": "joblib",
+              "input_schema": "text_string",
+              "output_schema": "ham_or_spam"
+            }
+          }
+          EOF
+
+          echo "Generated metadata:"
+          cat output/model_metadata.json
 
       - name: Create GitHub Release
         env:
@@ -70,8 +166,33 @@ jobs:
             exit 0
           fi
 
+          # Build release notes
+          NOTES="## $NEW_VERSION
+
+          **Trained at:** $(date -u +%Y-%m-%dT%H:%M:%SZ)
+          **Commit:** [${{ github.sha }}](https://github.com/${{ github.repository }}/tree/${{ github.sha }})
+          **Triggered by:** @${{ github.actor }}
+          **Bump type:** ${{ inputs.bump_type }}
+
+          ### Performance
+          - Classifier: Decision Tree
+          - Accuracy: $(cat output/model_metadata.json | grep -o '"accuracy": [0-9.]*' | cut -d' ' -f2)
+
+          ### Compatibility
+          - Minimum service version: v1.0.0
+          - Format: joblib (scikit-learn $(uv run python -c "import sklearn; print(sklearn.__version__)"))
+
+          ### Versioning Scheme
+          This project uses **compatibility-based semantic versioning** for models:
+          - **MAJOR**: Format/serialization changes (breaks loading)
+          - **MINOR**: Input/output schema changes (breaks inference)
+          - **PATCH**: Retraining with same pipeline (performance only)
+
+          ${{ inputs.release_notes }}"
+
           gh release create "$NEW_VERSION" \
             output/model.joblib \
             output/preprocessor.joblib \
-            --title "$NEW_VERSION"
-
+            output/model_metadata.json \
+            --title "$NEW_VERSION" \
+            --notes "$NOTES"
